@@ -1,0 +1,6 @@
+# BPE Tokenizer Requirements
+# Python 3.8+
+
+# Core dependencies
+datasets>=2.14.0
+tqdm>=4.65.0
