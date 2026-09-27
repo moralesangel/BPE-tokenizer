@@ -2,6 +2,9 @@
 
 A clean, educational implementation of the Byte Pair Encoding algorithm used in modern language models like GPT.
 
+**[▶ Try the live demo](https://moralesangel.github.io/BPE-tokenizer/)** — tokenize text in
+your browser and watch each word get built up merge by merge.
+
 ## 📋 Overview
 
 This implementation demonstrates how BPE tokenization works from scratch, including:
