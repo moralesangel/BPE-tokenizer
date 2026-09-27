@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BPE Tokenizer — live demo</title>
+<meta name="description" content="Type a word and watch Byte Pair Encoding build it up merge by merge, using a 3,000-token vocabulary trained from scratch.">
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36;
+    --text: #e7ebf3; --muted: #9aa4b8;
+    --accent: #7c9cf5; --accent-dim: #5a78d0;
+    --hot: #f5a97c; --good: #7ee0a0;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f6f7f9; --panel: #fff; --line: #e2e6ee;
+      --text: #12151b; --muted: #5a6478;
+      --accent: #3550b0; --accent-dim: #26398a;
+      --hot: #b35c17; --good: #1f7a45;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 32px 16px 64px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 26px; }
+  h1 { font-size: 1.6rem; margin: 0 0 6px; letter-spacing: -.02em; }
+  .sub { color: var(--muted); margin: 0; }
+  .sub a { color: var(--accent); }
+  h2 { font-size: 1.02rem; margin: 0 0 10px; letter-spacing: -.01em; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px; margin-bottom: 18px;
+  }
+  label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 6px; }
+  input[type=text] {
+    width: 100%; padding: 11px 13px; font-size: 1rem;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px;
+    font-family: inherit;
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .examples button {
+    font: inherit; font-size: .82rem; cursor: pointer;
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 11px;
+  }
+  .examples button:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* Token chips */
+  .tokens { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .tok {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: .86rem; padding: 4px 9px; border-radius: 6px;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    white-space: pre;
+  }
+  .tok .id { color: var(--muted); font-size: .74rem; margin-left: 5px; }
+  .tok.unk {
+    background: color-mix(in srgb, var(--hot) 16%, transparent);
+    border-color: color-mix(in srgb, var(--hot) 45%, transparent);
+  }
+  .wordgroup { display: inline-flex; gap: 4px; padding: 3px; border-radius: 8px; }
+  .wordgroup + .wordgroup { margin-left: 2px; }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 22px; margin-top: 14px; font-size: .86rem; }
+  .stats div { color: var(--muted); }
+  .stats b { color: var(--text); font-size: 1.15rem; display: block; font-weight: 600; }
+
+  /* Merge walkthrough */
+  .wordpick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .wordpick button {
+    font: inherit; font-size: .84rem; cursor: pointer; padding: 4px 11px;
+    background: transparent; color: var(--text);
+    border: 1px solid var(--line); border-radius: 999px;
+  }
+  .wordpick button[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    border-color: var(--accent); color: var(--accent);
+  }
+  .step { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 7px 0; }
+  .step + .step { border-top: 1px dashed var(--line); }
+  .stepn {
+    font-family: ui-monospace, monospace; font-size: .74rem; color: var(--muted);
+    min-width: 62px;
+  }
+  .rule {
+    font-family: ui-monospace, monospace; font-size: .78rem;
+    color: var(--good); white-space: nowrap;
+  }
+  .seq { display: flex; flex-wrap: wrap; gap: 3px; }
+  .ch {
+    font-family: ui-monospace, monospace; font-size: .82rem;
+    padding: 2px 6px; border-radius: 4px;
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+    white-space: pre;
+  }
+  .ch.new {
+    background: color-mix(in srgb, var(--good) 26%, transparent);
+    outline: 1px solid color-mix(in srgb, var(--good) 55%, transparent);
+  }
+  .muted { color: var(--muted); }
+  .note { font-size: .84rem; color: var(--muted); margin: 10px 0 0; }
+  code {
+    font-family: ui-monospace, monospace; font-size: .86em;
+    background: color-mix(in srgb, var(--text) 9%, transparent);
+    padding: 1px 5px; border-radius: 4px;
+  }
+  .roundtrip {
+    font-family: ui-monospace, monospace; font-size: .86rem;
+    padding: 9px 11px; border-radius: 7px; margin-top: 4px;
+    background: var(--bg); border: 1px solid var(--line);
+    word-break: break-word;
+  }
+  footer { text-align: center; color: var(--muted); font-size: .84rem; margin-top: 30px; }
+  footer a { color: var(--accent); }
+  @media (max-width: 560px) {
+    .stepn { min-width: 0; }
+    .stats { gap: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>BPE Tokenizer</h1>
+    <p class="sub">
+      A 3,000-token vocabulary trained from scratch on short stories.
+      <a href="https://github.com/moralesangel/BPE-tokenizer">Source and training notebook →</a>
+    </p>
+  </header>
+
+  <section class="panel">
+    <label for="inp">Type anything</label>
+    <input id="inp" type="text" value="The dragon flew over the castle." autocomplete="off" spellcheck="false">
+    <div class="examples" id="examples"></div>
+  </section>
+
+  <section class="panel">
+    <h2>1. Tokens</h2>
+    <p class="note" style="margin-top:0">
+      Text is split into words, each gets a <code>&lt;/w&gt;</code> end marker, then merge
+      rules fire. Chips are grouped by word; <span style="color:var(--hot)">orange</span>
+      means the piece was not in the vocabulary and fell back to characters.
+    </p>
+    <div class="tokens" id="tokens"></div>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <section class="panel">
+    <h2>2. How one word gets built</h2>
+    <p class="note" style="margin-top:0">
+      Every rule is applied in the order it was learned during training. Only the
+      rules that actually changed this word are shown.
+    </p>
+    <div class="wordpick" id="wordpick"></div>
+    <div id="steps"></div>
+  </section>
+
+  <section class="panel">
+    <h2>3. Decoded back</h2>
+    <p class="note" style="margin-top:0">
+      Ids → tokens → text. Case is lost because training lowercases everything.
+    </p>
+    <div class="roundtrip" id="decoded"></div>
+  </section>
+
+  <footer>
+    Runs entirely in your browser — vocabulary and merge rules are the same files
+    the Python tokenizer loads.
+  </footer>
+</div>
+
+<script type="module">
+import { BPETokenizer } from './tokenizer.js';
+
+const $ = (id) => document.getElementById(id);
+const inp = $('inp');
+let tk = null;
+let picked = 0;
+
+const EXAMPLES = [
+  'The dragon flew over the castle.',
+  'unbelievable',
+  "It's 2024, isn't it?",
+  'tokenization',
+  'supercalifragilistic',
+  'zzzqqq',
+];
+
+function esc(s) {
+  return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+/** Show the end-of-word marker as a visible symbol rather than literal text. */
+function pretty(t) {
+  return esc(t).replace(/&lt;\/w&gt;/g, '<span class="muted">␣</span>');
+}
+
+function render() {
+  const text = inp.value;
+  const words = tk.encodeDetailed(text);
+
+  // --- tokens ---
+  const ids = [];
+  $('tokens').innerHTML = words
+    .map((w) => {
+      const chips = w.pieces
+        .map((p) => {
+          ids.push(p.id);
+          return `<span class="tok${p.known ? '' : ' unk'}">${pretty(p.token)}<span class="id">${p.id}</span></span>`;
+        })
+        .join('');
+      return `<span class="wordgroup">${chips}</span>`;
+    })
+    .join('');
+
+  const chars = [...text].length;
+  $('stats').innerHTML = `
+    <div><b>${chars}</b>characters</div>
+    <div><b>${words.length}</b>words</div>
+    <div><b>${ids.length}</b>tokens</div>
+    <div><b>${chars ? (chars / (ids.length || 1)).toFixed(2) : '0'}</b>chars per token</div>`;
+
+  // --- word picker ---
+  if (picked >= words.length) picked = 0;
+  $('wordpick').innerHTML = words
+    .map((w, i) => `<button data-i="${i}" aria-pressed="${i === picked}">${esc(w.word)}</button>`)
+    .join('');
+
+  // --- merge walkthrough ---
+  const w = words[picked];
+  if (!w) {
+    $('steps').innerHTML = '<p class="muted">Type something to see the merges.</p>';
+  } else {
+    const rows = w.steps.map((s, i) => {
+      // Mark the tokens produced by this step's rule.
+      const merged = s.rule ? s.rule[0] + s.rule[1] : null;
+      const seq = s.tokens
+        .map((t) => `<span class="ch${merged && t === merged ? ' new' : ''}">${pretty(t)}</span>`)
+        .join('');
+      const label = s.rule
+        ? `<span class="rule">${pretty(s.rule[0])} + ${pretty(s.rule[1])}</span>`
+        : '<span class="muted" style="font-size:.78rem">characters</span>';
+      const n = s.rule ? `rule #${s.index + 1}` : 'start';
+      return `<div class="step"><span class="stepn">${n}</span>${label}<span class="seq">${seq}</span></div>`;
+    });
+    const fired = w.steps.length - 1;
+    rows.push(
+      `<p class="note">${fired} of ${tk.merges.length.toLocaleString()} rules changed this word.</p>`,
+    );
+    $('steps').innerHTML = rows.join('');
+  }
+
+  // --- decoded ---
+  // Every token carries its own </w>, so punctuation comes back space-separated.
+  // Compare on the pretokenized words instead, which is what BPE actually preserves.
+  const back = tk.decode(ids);
+  const lossless =
+    back.split(/\s+/).filter(Boolean).join(' ') ===
+    tk.pretokenize(text).join(' ');
+  $('decoded').innerHTML =
+    (back ? esc(back) : '<span class="muted">(empty)</span>') +
+    (back
+      ? ` <span class="muted">— ${
+          lossless
+            ? 'every word recovered; only casing and spacing around punctuation change'
+            : 'some characters were outside the vocabulary and were dropped'
+        }</span>`
+      : '');
+}
+
+inp.addEventListener('input', () => { picked = 0; render(); });
+$('wordpick').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-i]');
+  if (!b) return;
+  picked = Number(b.dataset.i);
+  render();
+});
+$('examples').innerHTML = EXAMPLES.map((x) => `<button>${esc(x)}</button>`).join('');
+$('examples').addEventListener('click', (e) => {
+  if (e.target.tagName !== 'BUTTON') return;
+  inp.value = e.target.textContent;
+  picked = 0;
+  render();
+  inp.focus();
+});
+
+fetch('./bpe-data.json')
+  .then((r) => r.json())
+  .then((d) => {
+    tk = new BPETokenizer(d.vocab, d.merges);
+    render();
+  })
+  .catch(() => {
+    $('tokens').innerHTML =
+      '<p class="muted">Could not load the vocabulary file.</p>';
+  });
+</script>
+</body>
+</html>
